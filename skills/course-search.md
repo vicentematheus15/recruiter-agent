@@ -1,64 +1,142 @@
-# Course Search Skill
+# Skill de Análise de Cursos
 
-## Overview
-This skill defines the complete workflow for the **Curator** agent to search for courses on **alura.com.br/formacoes** that fill the user's missing skills.
+## Visão Geral
 
-## Steps
-1. **Input**
-   - Receive a list of missing skills (e.g., `"Python", "Docker"`).
-   - Load the user profile from `data/user-profile.md` if additional context is needed.
-2. **Search**
-   For each missing skill (or a combination of up to two skills), run the Firecrawl CLI. If the `firecrawl search` command fails for a skill, retry with a site‑restricted query `firecrawl search "site:alura.com.br [skill]" --json`. If it still fails, fall back to a raw `curl` request to fetch the page HTML.
-     ```
-     firecrawl search "cursos alura [skill]" --json
-     ```
-   - Limit the result set to **10** items per search.
-   - Collect the JSON output which contains `url`, `title`, and a short `description` for each course.
-3. **Scrape**
-   - For every URL returned, execute:
-     ```
-     firecrawl scrape <url> --format markdown
-     ```
-   - Parse the markdown to extract the following fields (if present):
-     - **title**
-     - **author**
-     - **carga horária** (hours)
-     - **nível** (iniciante, avançado, etc.)
-     - **description** (first paragraph as a short summary)
-   If scraping fails, keep the data from the search result and set `scrape_failed: true`. If both `firecrawl scrape` and a fallback `curl` retrieval fail, treat it as a scrape failure.
-4. **Match Skills**
-   - Compare the course description (case‑insensitive) with the list of missing skills.
-   - Build an array `habilidades_cobertas` containing every missing skill that appears in the description.
-   - Discard any course where `habilidades_cobertas` is empty.
-5. **Scoring**
-   - Score each course by the number of covered skills (`score = len(habilidades_cobertas)`).
-   - Optionally boost courses whose `nível` matches the user's experience level.
-6. **Selection**
-   - Sort courses by `score` descending.
-   - Keep the top **5** courses.
-7. **Response Envelope**
-   - Return a structured list (no markdown tables) as follows:
-     ```
-     1. titulo: <title>
-        autor: <author>
-        carga_horaria: <hours>
-        nivel: <level>
-        link: <url>
-        habilidades_cobertas: [skill1, skill2]
-        descricao_resumida: <short description>
-        scrape_failed: false
-     2. ...
-     ```
-   - If any step fails, include an `erros` field with a clear message and abort further processing.
+Esta skill fornece capacidades de análise e recomendação de cursos usando o CLI do Firecrawl. Ela busca na Alura (alura.com.br/formacoes) cursos que abordem lacunas de habilidades identificadas pelo agente Scout, extrai metadados de curso e retorna uma lista curada e ordenada de recomendações.
 
-## Error Handling
-- **Search failure** – Populate `erros` with the CLI error output and stop.
-- **Scrape failure for a single course** – Keep the course entry, set `scrape_failed: true`, and note that only search data is available.
-- **Parsing errors** – Treat as scrape failure for that course.
+## Ferramenta
 
-## Dependencies
-- Relies on the existing `skills/firecrawl.md` for CLI usage guidelines.
-- Uses the Zed `terminal` tool to run the commands.
+- **Ferramenta Zed**: `terminal`
+- **CLI**: `firecrawl`
 
-## Output
-The skill produces a plain‑text response that the Curator agent will forward to the Maestro. No files are written directly by this skill; the Maestro will persist the result in `data/course-recommendations.md`.
+## Comandos
+
+### Busca de Cursos
+
+Busque na Alura cursos correspondentes a uma habilidade específica:
+
+```
+firecrawl search "alura [habilidade]" --json
+```
+
+**Parâmetros**:
+- `[habilidade]` — o nome da habilidade para buscar (ex: "React", "Python", "Docker", "SQL")
+
+**Retorna**: Array JSON onde cada resultado contém (chaves em inglês do firecrawl):
+- `url` — a URL da página do curso em alura.com.br/formacoes
+- `title` — o título do curso
+- `description` — uma breve descrição ou trecho do curso
+
+> **Nota**: O firecrawl retorna chaves JSON em inglês. Mapeie para os campos internos: `title` → `nome_curso`, `description` → `descricao`.
+
+### Detalhes Completos do Curso
+
+Faça scrape de uma URL individual de curso para extrair metadados detalhados (duração, nível, descrição completa):
+
+```
+firecrawl scrape <url> --format markdown
+```
+
+**Parâmetros**:
+- `<url>` — a URL do curso dos resultados de busca
+
+**Retorna**: Conteúdo da página formatado em markdown incluindo título do curso, duração, nível, descrição, pré-requisitos e lista de módulos.
+
+**Fallback**: Se `firecrawl scrape` falhar ou expirar para uma URL, use os campos `title` e `description` do resultado de busca e marque campos desconhecidos (duração, nível) como `não especificado`.
+
+## Etapas do Fluxo de Trabalho
+
+1. **Valide pré-requisitos** — Verifique se `data/job-search-results.md` existe. Se não existir, relate um erro e pare.
+
+2. **Extraia habilidades faltantes** — Leia `data/job-search-results.md` e colete todos os valores únicos de cada campo `habilidades_faltantes` em todos os resultados de vagas. Desduplica a lista.
+
+3. **Lide com lacunas de habilidades vazias** — Se não houver habilidades faltantes (lista vazia), relate um erro: nenhuma lacuna de habilidade encontrada, então nenhum curso é necessário. Pare.
+
+4. **Leia a área de interesse do usuário** — Carregue `data/user-profile.md` e extraia o campo `Área de interesse`.
+
+5. **Execute busca para cada habilidade** — Para cada habilidade faltante (processe até 5 habilidades únicas), execute:
+   ```
+   firecrawl search "alura [habilidade]" --json
+   ```
+
+6. **Lide com falhas de busca** — Se `firecrawl search` falhar para uma habilidade (código de saída diferente de zero, timeout ou saída de erro):
+    - Tente o fallback: `firecrawl search "site:alura.com.br [habilidade]" --json`
+    - Se o fallback também falhar, pule essa habilidade
+    - Note a habilidade ignorada no campo `erros`
+    - Continue processando as habilidades restantes. Não pare o processamento inteiro por uma única falha.
+
+7. **Lide com resultados de busca vazios** — Se uma busca retornar zero resultados para uma habilidade específica:
+   - Pule essa habilidade
+   - Note a habilidade ignorada no campo `erros`
+   - Continue processando as habilidades restantes
+
+8. **Selecione os melhores cursos** — De todos os resultados de busca em todas as habilidades:
+   - Selecione até 5 cursos no total
+   - Priorize cursos com o nome da habilidade aparecendo no título ou descrição
+   - Garanta cobertura das habilidades faltantes mais críticas primeiro
+
+9. **Enriqueça detalhes do curso** — Para cada curso selecionado:
+   a. Extraia `url`, `title`, `description` do resultado de busca JSON
+   b. Tente fazer scrape da página completa do curso:
+      ```
+      firecrawl scrape <url> --format markdown
+      ```
+   c. Se o scrape tiver sucesso, extraia:
+      - **nome_curso**: do título do curso na página
+      - **duracao**: a duração total do curso (ex: "20 horas", "12h30")
+      - **nivel**: das tags ou texto da página — classifique como `iniciante`, `intermediario` ou `avancado`
+      - **link**: a URL do curso
+   d. Se o scrape falhar ou expirar:
+      - Use o `title` do resultado de busca como `nome_curso`
+      - Marque `duracao` e `nivel` como `não especificado`
+      - Use a `url` do resultado de busca como `link`
+      - Note a URL com falha no campo `erros`
+   e. Registre qual habilidade faltante o curso aborda como `aborda_habilidade`
+
+10. **Regras de classificação de nível** — Classifique o nível do curso usando estas heurísticas:
+    - `iniciante`: título contém "Introdução", "Primeiros Passos", "Fundamentos", "Básico" ou "Para Iniciantes"
+    - `intermediario`: título contém "Intermediário" ou implica conhecimento prévio
+    - `avancado`: título contém "Avançado", "Profundo", "Expert", "Arquitetura" ou "Especialista"
+    - Se o nível não puder ser determinado, marque como `não especificado`
+
+11. **Ordene os cursos** — Ordene os resultados por nível:
+    - Primeiro: todos os cursos `iniciante` (na ordem de descoberta)
+    - Segundo: todos os cursos `intermediario` (na ordem de descoberta)
+    - Terceiro: todos os cursos `avancado` (na ordem de descoberta)
+    - Cursos marcados como `não especificado` vão por último
+
+12. **Retorne os resultados** — Formate os resultados no Envelope de Resposta. **NÃO escreva em arquivos** — o Maestro salva os resultados em `data/course-recommendations.md`.
+
+13. **Gere ordem sugerida** — Liste os nomes dos cursos na ordem ordenada como uma lista numerada sob o cabeçalho "Ordem sugerida".
+
+## Formato de Dados de Resposta
+
+Retorne os resultados de curso neste formato exato. Sem tabelas markdown:
+
+```
+1. nome_curso: [título do curso]
+   duracao: [ex: 20 horas]
+   nivel: [iniciante | intermediario | avancado]
+   aborda_habilidade: [nome da habilidade]
+   link: [URL]
+
+2. nome_curso: [próximo título do curso]
+   duracao: [ex: 12h30]
+   nivel: [iniciante | intermediario | avancado]
+   aborda_habilidade: [nome da habilidade]
+   link: [URL]
+
+Ordem sugerida:
+1. [nome do curso]
+2. [nome do curso]
+3. [nome do curso]
+```
+
+## Tratamento de Erros
+
+- **Busca falha para uma habilidade**: Se `firecrawl search` retornar um erro ou código de saída diferente de zero, tente o fallback `site:alura.com.br`. Se o fallback também falhar, pule essa habilidade, note-a no campo `erros` e continue com as habilidades restantes. Não pare o processamento inteiro por uma única falha.
+- **Scrape falha em URL individual**: Se `firecrawl scrape` falhar para uma URL de curso específica, use dados do resultado de busca como fallback com `não especificado` para campos faltantes. Note a URL com falha no campo de erros. Continue processando outros cursos.
+- **Scrape expira**: Trate como falha. Use dados do resultado de busca como fallback.
+- **Nenhum resultado para uma habilidade**: Pule a habilidade e note-a no campo de erros. Continue com as habilidades restantes.
+- **Nenhum resultado para todas as habilidades**: Retorne estado `erro` sugerindo que o usuário tente termos de busca diferentes ou verifique se a Alura oferece cursos para sua área alvo.
+- **Dados de pré-requisito ausentes**: Se `data/job-search-results.md` estiver ausente ou não tiver habilidades faltantes, retorne estado `erro` solicitando que o usuário busque vagas primeiro (opção A do menu).
