@@ -130,7 +130,7 @@ Protocolo de despacho e handoff de agentes com:
 
 ### 4. Criar template `data/personality-quiz.md`
 
-### 5. Escrever `personas/maestro.md`
+### 5. Criar `personas/maestro.md`
 
 O Maestro deve conter:
 
