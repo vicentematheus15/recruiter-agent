@@ -1,4 +1,4 @@
-Área de interesse: Backend
+Área de interesse: Ciência de Dados
 Nível de experiência: Estágio
 Preferências de trabalho: Remoto, Híbrido, Presencial
 Localização: São José - Santa Catarina

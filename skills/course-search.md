@@ -1,14 +1,14 @@
 # Course Search Skill
 
 ## Overview
-This skill defines the complete workflow for the **Curator** agent to search for courses on **alura.com.br** that fill the user's missing skills.
+This skill defines the complete workflow for the **Curator** agent to search for courses on **alura.com.br/formacoes** that fill the user's missing skills.
 
 ## Steps
 1. **Input**
    - Receive a list of missing skills (e.g., `"Python", "Docker"`).
    - Load the user profile from `data/user-profile.md` if additional context is needed.
 2. **Search**
-   - For each missing skill (or a combination of up to two skills), run the Firecrawl CLI:
+   For each missing skill (or a combination of up to two skills), run the Firecrawl CLI. If the `firecrawl search` command fails for a skill, retry with a site‑restricted query `firecrawl search "site:alura.com.br [skill]" --json`. If it still fails, fall back to a raw `curl` request to fetch the page HTML.
      ```
      firecrawl search "cursos alura [skill]" --json
      ```
@@ -25,7 +25,7 @@ This skill defines the complete workflow for the **Curator** agent to search for
      - **carga horária** (hours)
      - **nível** (iniciante, avançado, etc.)
      - **description** (first paragraph as a short summary)
-   - If scraping fails, keep the data from the search result and set `scrape_failed: true`.
+   If scraping fails, keep the data from the search result and set `scrape_failed: true`. If both `firecrawl scrape` and a fallback `curl` retrieval fail, treat it as a scrape failure.
 4. **Match Skills**
    - Compare the course description (case‑insensitive) with the list of missing skills.
    - Build an array `habilidades_cobertas` containing every missing skill that appears in the description.

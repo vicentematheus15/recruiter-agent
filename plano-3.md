@@ -56,6 +56,15 @@ Agente especializado em buscar cursos na **alura.com.br** que complementem as ha
 **Ferramentas do Zed**:
 - `terminal` – executar comandos `firecrawl search` e `firecrawl scrape`.
 
+**Ferramentas de acesso web**:
+- Sempre use `firecrawl search` via `terminal` como seu método primário de acesso à web
+- Se `firecrawl search` falhar para uma habilidade específica, tente o fallback: `firecrawl search "site:alura.com.br [habilidade]" --json`
+- Se o firecrawl falhar consistentemente, você PODE usar `curl` ou `wget` como fallback para obter conteúdo bruto da página — note as limitações (sem renderização JS, possíveis bloqueios anti-bot, HTML bruto em vez de markdown limpo)
+- Evite `Fetch`, `webfetch` ou outras ferramentas HTTP — prefira firecrawl primeiro, depois curl/wget apenas como recuperação
+
+**Fonte de Dados**:
+- Alura (alura.com.br/formacoes)
+- 
 **Fluxo de Trabalho**
 1. **Entrada** – Receber do Maestro a lista de habilidades faltantes e o perfil do usuário (`data/user-profile.md`).
 2. **Busca** – Executar:
