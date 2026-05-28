@@ -1,64 +1,82 @@
-# Job Search Skill
+# job-search.md
 
-## Ferramentas do Zed
-- `terminal` – executar comandos CLI do Firecrawl.
-- `read_file` – ler `data/user-profile.md` para obter habilidades, nível e localização.
-- `write_file` – salvar resultados em `data/job-search-results.md` (opcional, o agente pode retornar e Maestro grava).
+## Objetivo
+Implementa o fluxo de busca de vagas usando o CLI **Firecrawl** e gera um resumo estruturado dos resultados para o agente Scout.
 
-## Fluxo
-1. **Carregar perfil do usuário**
-   - Ler `data/user-profile.md`.
-   - Extrair campos: `area_de_interesse`, `localizacao`, `nivel_de_experiencia`, `habilidades` (lista separada por vírgulas).
-2. **Buscar vagas**
-   - Construir query: `vagas {area_de_interesse} {localizacao}`.
-   - Executar:
-     ```sh
-     firecrawl search "vagas {area_de_interesse} {localizacao}" --json
-     ```
-   - O comando devolve JSON com objetos contendo `url`, `title`, `description`.
-   - Se o comando falhar, retornar envelope de resposta com `estado: erro` e mensagem.
-3. **Obter detalhes de cada vaga**
-   - Para cada resultado (máximo 5), executar:
-     ```sh
+## Passos
+1. **Construir consulta**
+   ```text
+   firecrawl search "vagas <area_de_interesse> <localizacao>" --json
+   ```
+   - `<area_de_interesse>` e `<localizacao>` são lidos de `data/user-profile.md`.
+   - O flag `--json` garante que a saída seja um JSON contendo `url`, `title`, `description` e `snippet` para cada resultado.
+
+2. **Executar busca**
+   - Use a ferramenta `terminal` com `cd` apontando para a raiz do projeto (`recruiter-agent`).
+   - Capture a saída; se o comando falhar, registre o erro no campo `erros` e interrompa o fluxo.
+
+3. **Selecionar até 5 resultados**
+   - Parseie o JSON e mantenha os primeiros 5 itens.
+   - Para cada URL, execute:
+     ```text
      firecrawl scrape <url> --format markdown
      ```
-   - Se a extração falhar, usar `title` e `description` do resultado da busca como fallback e anotar a falha.
-4. **Extrair requisitos da vaga**
-   - Analisar o markdown retornado procurando padrões de habilidades (palavras‑chave). Para simplificar, considerar todas as palavras que aparecem nas seções "Requisitos", "Skills", "Tecnologias" como habilidades requeridas.
-   - Normalizar a lista para minúsculas e remover duplicatas.
-5. **Correspondência de habilidades**
-   - Comparar a lista de habilidades requeridas com a lista do usuário (case‑insensitive).
-   - `habilidades_correspondentes` = interseção.
-   - `habilidades_faltantes` = diferença (requeridas – usuário).
-   - `contagem_correspondencia` = "X de Y habilidades correspondem" onde X = tamanho da interseção e Y = total de habilidades requeridas.
-6. **Filtragem por nível de experiência**
-   - Se a descrição da vaga mencionar um nível (júnior, pleno, sênior), manter apenas vagas que coincidam com `nivel_de_experiencia` do usuário.
-   - Caso não haja vagas do nível exato nos primeiros 5 resultados, expandir a busca incluindo vagas adjacentes e marcar a discrepância no campo `nivel_discrepancia` (opcional).
-7. **Construir resposta**
-   - Selecionar até 5 vagas que atendam aos critérios.
-   - Formatar cada vaga conforme o **Formato de dados da resposta**:
-     ```
-     1. titulo: <title>
-        empresa: <empresa>
-        localizacao: <cidade ou Remoto>
-        link: <url>
-        habilidades_correspondentes: [h1, h2]
-        habilidades_faltantes: [h3, h4]
-        contagem_correspondencia: <X de Y>
-     ```
-   - Incluir campo opcional `nivel_discrepancia` se houver diferença de nível.
-8. **Envelope de Resposta**
-   ```
-   ## RESPOSTA: SCOUT
-   ### estado
-   sucesso
-   ### dados
-   <lista formatada acima>
-   ```
-   - Em caso de erro em qualquer etapa, usar `estado: erro` e incluir mensagem detalhada.
+   - Caso a extração falhe, use apenas o `title` e `description` retornados pela busca.
 
-## Tratamento de Erros
-- Falha no `firecrawl search` → retornar erro imediatamente.
-- Falha no `firecrawl scrape` de uma URL específica → usar fallback (title/description) e continuar.
-- Falha ao ler `data/user-profile.md` → erro crítico.
-- Qualquer exceção inesperada → `estado: erro` com descrição.
+4. **Extrair informações da vaga**
+   - **Título** – `title`.
+   - **Empresa** – Tentar inferir a partir da URL (sub‑domínio) ou do título (texto antes de "-" ou "|`).
+   - **Localização** – Procurar por padrões de cidade/estado ou a palavra "Remoto" no conteúdo markdown.
+   - **Habilidades requeridas** – Extrair listas ou frases que contenham palavras‑chave de habilidades (ex.: "Node.js", "JavaScript", "SQL", etc.).
+   - **Nível de experiência** – Detectar termos como "Estágio", "Júnior", "Pleno", "Sênior".
+
+5. **Correspondência de habilidades**
+   - Ler `data/user-profile.md` e obter a lista de habilidades técnicas do usuário.
+   - Comparar (case‑insensitive) cada habilidade requerida da vaga com a lista do usuário.
+   - Produzir duas listas:
+     - `habilidades_correspondentes`
+     - `habilidades_faltantes`
+   - Calcular `contagem_correspondencia` como `X de Y` onde `X` é o número de correspondências e `Y` o total de habilidades requeridas.
+
+6. **Filtragem por nível**
+   - Se a vaga especificar um nível que não corresponde ao nível do usuário, marcar a vaga como "nível divergente" e ainda incluí‑la caso não existam vagas do nível exato nos primeiros 5 resultados.
+
+7. **Formato de saída**
+   ```text
+   1. titulo: <título da vaga>
+      empresa: <nome da empresa>
+      localizacao: <cidade ou Remoto>
+      link: <URL>
+      habilidades_correspondentes: [h1, h2]
+      habilidades_faltantes: [h3, h4]
+      contagem_correspondencia: X de Y habilidades correspondem
+   
+   2. titulo: ...
+   ```
+   - Até 5 vagas.
+   - Caso alguma extração falhe, incluir o campo `erro_extracao` com a mensagem.
+
+8. **Envelope de resposta**
+   - O Scout deve devolver um objeto JSON contendo:
+     ```json
+     {
+       "estado": "sucesso" | "erro",
+       "resumo": "<texto resumido>",
+       "dados": "<texto formatado acima>",
+       "erros": []
+     }
+     ```
+   - Em caso de erro, `estado` = "erro" e `erros` lista as mensagens.
+
+## Tratamento de erros
+- Falha no comando `firecrawl search` → registrar erro e abortar.
+- Falha no `firecrawl scrape` de uma URL específica → usar título/descrição da busca e anotar `erro_extracao`.
+- JSON inválido → registrar erro e abortar.
+- Se nenhum resultado for encontrado → retornar `estado":"erro"` com mensagem "Nenhuma vaga encontrada".
+
+## Dependências
+- CLI Firecrawl configurado (`FIRECRAWL_API_KEY`).
+- Ferramenta `terminal` do Zed.
+
+---
+*Este skill deve ser carregado por `personas/scout.md`.*
