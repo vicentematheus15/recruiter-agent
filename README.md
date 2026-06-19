@@ -18,16 +18,16 @@ O sistema é composto por um orquestrador e três agentes especializados, cada u
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                    Usuário                        │
+│                    Usuário                      │
 └────────────────────┬────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────┐
-│            MAESTRO (Orquestrador)                │
-│  · Interface principal com o usuário             │
-│  · Conduz o quiz de perfil                       │
-│  · Coordena os agentes via spawn_agent           │
-│  · Lê e escreve arquivos em data/                │
+│            MAESTRO (Orquestrador)               │
+│  · Interface principal com o usuário            │
+│  · Conduz o quiz de perfil                      │
+│  · Coordena os agentes via spawn_agent          │
+│  · Lê e escreve arquivos em data/               │
 └──┬──────────────┬──────────────┬────────────────┘
    │              │              │
    ▼              ▼              ▼
